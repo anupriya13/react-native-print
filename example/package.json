@@ -6,19 +6,19 @@
     "android": "react-native run-android",
     "appium": "appium",
     "ios": "react-native run-ios",
-    "windows": "react-native run-windows",
+    "windows": "npx @react-native-community/cli run-windows",
     "start": "react-native start",
     "test": "jest",
-    "test:windows": "yarn jest --setupFiles=./jest-setups/jest.setup.windows.js",
+    "test:windows": "jest --config jest.config.windows.js",
     "lint": "eslint .",
     "postinstall": "node ../scripts/examples_postinstall.js node_modules/react-native-print/"
   },
   "dependencies": {
     "react": "16.13.1",
-    "react-native": "0.63.3",
+    "react-native": "0.77.2",
     "react-native-html-to-pdf": "0.8.0",
     "react-native-print": "../",
-    "react-native-windows": "^0.63.0-0"
+    "react-native-windows": "0.77.7"
   },
   "devDependencies": {
     "@babel/core": "^7.8.4",
@@ -31,9 +31,18 @@
     "metro-react-native-babel-preset": "^0.59.0",
     "react-test-renderer": "16.13.1",
     "selenium-appium": "^0.0.15",
-    "selenium-webdriver": "^4.0.0-alpha.7"
+    "selenium-webdriver": "^4.0.0-alpha.7",
+    "@rnx-kit/jest-preset": "^0.1.17",
+    "@react-native/metro-config": "^0.77.2"
   },
   "jest": {
     "preset": "react-native"
+  },
+  "react-native-windows": {
+    "init-windows": {
+      "name": "RNPrintExample",
+      "namespace": "RNPrintExample",
+      "template": "cpp-app"
+    }
   }
 }

@@ -1,16 +1,24 @@
 #pragma once
+
 #include "ReactPackageProvider.g.h"
 
 using namespace winrt::Microsoft::ReactNative;
 
-namespace winrt::RNPrint::implementation {
-  struct ReactPackageProvider : ReactPackageProviderT<ReactPackageProvider> {
-    ReactPackageProvider() = default;
-    void CreatePackage(IReactPackageBuilder const &packageBuilder) noexcept;
-  };
-}
+namespace winrt::RNPrint::implementation
+{
 
-namespace winrt::RNPrint::factory_implementation {
-  struct ReactPackageProvider : ReactPackageProviderT<ReactPackageProvider, implementation::ReactPackageProvider> {};
-}
+struct ReactPackageProvider : ReactPackageProviderT<ReactPackageProvider>
+{
+  ReactPackageProvider() = default;
 
+  void CreatePackage(IReactPackageBuilder const &packageBuilder) noexcept;
+};
+
+} // namespace winrt::RNPrint::implementation
+
+namespace winrt::RNPrint::factory_implementation
+{
+
+struct ReactPackageProvider : ReactPackageProviderT<ReactPackageProvider, implementation::ReactPackageProvider> {};
+
+} // namespace winrt::RNPrint::factory_implementation
