@@ -60,7 +60,7 @@ export default class RNPrintExample extends Component {
   }
 
   async printRemotePDF() {
-    await RNPrint.print({ filePath: 'https://graduateland.com/api/v2/users/jesper/cv' })
+    await RNPrint.print({ filePath: 'https://sample-files.com/downloads/documents/pdf/basic-text.pdf' })
   }
 
   customOptions = () => {
