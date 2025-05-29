@@ -62,23 +62,31 @@ winrt::fire_and_forget RNPrint::Print(
                         }
                     }
 
-                    auto file = co_await tempFolder.CreateFileAsync(fileName, CreationCollisionOption::GenerateUniqueName);
-                    co_await FileIO::WriteBufferAsync(file, buffer);
+                    try {
+                        auto file = co_await tempFolder.CreateFileAsync(fileName, CreationCollisionOption::GenerateUniqueName);
+                        try {
+                            co_await FileIO::WriteBufferAsync(file, buffer);
+                        }
+                        catch (...) {
+                            co_return;
+                        }
+                        std::wstring nativePath = file.Path().c_str();
+                        auto result = ShellExecuteW(nullptr, L"print", nativePath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 
-                    std::wstring nativePath = file.Path().c_str();
-                    auto result = ShellExecuteW(nullptr, L"print", nativePath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-
-                    if ((INT_PTR)result <= 32) {
-                        promise.Reject(L"Failed to print downloaded file.");
-                    } else {
-                        promise.Resolve(jobName);
+                        if ((INT_PTR)result <= 32) {
+                            promise.Reject(L"Failed to print downloaded file.");
+                        }
+                        else {
+                            promise.Resolve(jobName);
+                        }
+                    }
+                    catch (...) {
+                        co_return;
                     }
                 }
                 catch (...) {
-                    promise.Reject(L"Exception occurred while downloading or printing file.");
+                    co_return;
                 }
-
-                co_return;
             });
         }
         else
@@ -99,16 +107,15 @@ winrt::fire_and_forget RNPrint::Print(
                     }
                 }
                 catch (...) {
-                    promise.Reject(L"Failed to open or print local file.");
+                    co_return;
                 }
-
-                co_return;
+            
             });
         }
     }
     catch (...)
     {
-        promise.Reject(L"Unknown error in Print function.");
+        co_return;
     }
 
     co_return;
