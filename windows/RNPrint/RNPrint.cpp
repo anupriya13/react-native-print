@@ -38,67 +38,79 @@ winrt::fire_and_forget RNPrint::Print(
         std::string filePathStr = options.filePath.value();
         auto filePathHstring = winrt::to_hstring(filePathStr);
 
-        // Check if the filePath is a URL (http/https)
-        if (filePathStr.rfind("http://", 0) == 0 || filePathStr.rfind("https://", 0) == 0) {
-            // Download the file to a temporary location first
-            m_context.UIDispatcher().Post([options, filePathStr, promise = std::move(promise)]() mutable -> winrt::fire_and_forget {
+        if (filePathStr.rfind("http://", 0) == 0 || filePathStr.rfind("https://", 0) == 0)
+        {
+            auto context = m_context; // Capture context safely
+            m_context.UIDispatcher().Post([context, filePathStr, jobName = options.jobName, promise]() mutable -> winrt::fire_and_forget {
                 using namespace winrt::Windows::Storage;
                 using namespace winrt::Windows::Web::Http;
-                using namespace winrt::Windows::Foundation;
 
                 try {
                     auto tempFolder = ApplicationData::Current().TemporaryFolder();
-                    auto uri = winrt::Windows::Foundation::Uri(winrt::to_hstring(filePathStr));
+                    winrt::Windows::Foundation::Uri uri{ winrt::to_hstring(filePathStr) };
                     HttpClient httpClient;
 
                     auto buffer = co_await httpClient.GetBufferAsync(uri);
+                    std::wstring fileName = L"printfile.pdf";
+
                     auto path = uri.Path();
-                    std::wstring fileName = L"printfile";
                     if (!path.empty()) {
                         std::wstring wpath = path.c_str();
                         size_t pos = wpath.find_last_of(L"/\\");
-                        if (pos != std::wstring::npos && pos + 1 < wpath.size()) {
+                        if (pos != std::wstring::npos && pos + 1 < wpath.length()) {
                             fileName = wpath.substr(pos + 1);
                         }
-                        else {
-                            fileName = wpath;
-                        }
                     }
+
                     auto file = co_await tempFolder.CreateFileAsync(fileName, CreationCollisionOption::GenerateUniqueName);
                     co_await FileIO::WriteBufferAsync(file, buffer);
 
-                    std::wstring nativePath = file.Path().c_str();  // Get full native path
-                    ShellExecuteW(NULL, L"print", nativePath.c_str(), NULL, NULL, SW_SHOWNORMAL);
-                    promise.Resolve(options.jobName);
+                    std::wstring nativePath = file.Path().c_str();
+                    auto result = ShellExecuteW(nullptr, L"print", nativePath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+
+                    if ((INT_PTR)result <= 32) {
+                        promise.Reject(L"Failed to print downloaded file.");
+                    } else {
+                        promise.Resolve(jobName);
+                    }
                 }
                 catch (...) {
                     promise.Reject(L"Exception occurred while downloading or printing file.");
                 }
+
                 co_return;
             });
-        } else {
-            // Local file path
-            m_context.UIDispatcher().Post([options, filePathHstring, promise = std::move(promise)]() mutable -> winrt::fire_and_forget {
+        }
+        else
+        {
+            auto context = m_context; // Capture safely
+            m_context.UIDispatcher().Post([context, filePathHstring, jobName = options.jobName, promise]() mutable -> winrt::fire_and_forget {
                 using namespace winrt::Windows::Storage;
-                using namespace winrt::Windows::Foundation;
 
                 try {
                     StorageFile file = co_await StorageFile::GetFileFromPathAsync(filePathHstring);
-                    std::wstring nativePath = file.Path().c_str();  // Get full native path
-                    ShellExecuteW(NULL, L"print", nativePath.c_str(), NULL, NULL, SW_SHOWNORMAL);
-                    promise.Resolve(options.jobName);
+                    std::wstring nativePath = file.Path().c_str();
+                    auto result = ShellExecuteW(nullptr, L"print", nativePath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+
+                    if ((INT_PTR)result <= 32) {
+                        promise.Reject(L"Failed to print local file.");
+                    } else {
+                        promise.Resolve(jobName);
+                    }
                 }
                 catch (...) {
                     promise.Reject(L"Failed to open or print local file.");
                 }
+
                 co_return;
             });
         }
     }
     catch (...)
     {
-        promise.Reject(L"Unknown error in Print function");
+        promise.Reject(L"Unknown error in Print function.");
     }
+
     co_return;
 }
 } // namespace winrt::RNPrint
