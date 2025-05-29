@@ -8,7 +8,8 @@
 #include "winrt/Windows.Foundation.h"
 #include <winrt/Windows.System.h>
 #include <winrt/Windows.Web.Http.h>
-#include <winrt/Windows.Storage.h>
+#include <windows.h>
+#include <shellapi.h>
 
 using namespace winrt;
 using namespace winrt::Microsoft::ReactNative;
@@ -23,13 +24,15 @@ void RNPrint::Initialize(React::ReactContext const &reactContext) noexcept {
   m_context = reactContext;
 }
 
-void RNPrint::Print(RNPrintCodegen::RNPrintSpec_RNPrintOptions&& options, ::React::ReactPromise<::React::JSValue>&& promise) noexcept
+winrt::fire_and_forget RNPrint::Print(
+    RNPrintCodegen::RNPrintSpec_RNPrintOptions options,
+    ::React::ReactPromise<::React::JSValue> promise) noexcept
 {
     try
     {
         if (!options.filePath.has_value()) {
             promise.Reject(L"Only filePath printing is supported without XAML controls.");
-            return;
+            co_return;
         }
 
         std::string filePathStr = options.filePath.value();
@@ -38,7 +41,7 @@ void RNPrint::Print(RNPrintCodegen::RNPrintSpec_RNPrintOptions&& options, ::Reac
         // Check if the filePath is a URL (http/https)
         if (filePathStr.rfind("http://", 0) == 0 || filePathStr.rfind("https://", 0) == 0) {
             // Download the file to a temporary location first
-            m_context.UIDispatcher().Post([filePathStr, promise = std::move(promise)]() mutable {
+            m_context.UIDispatcher().Post([options, filePathStr, promise = std::move(promise)]() mutable -> winrt::fire_and_forget {
                 using namespace winrt::Windows::Storage;
                 using namespace winrt::Windows::Web::Http;
                 using namespace winrt::Windows::Foundation;
@@ -48,97 +51,47 @@ void RNPrint::Print(RNPrintCodegen::RNPrintSpec_RNPrintOptions&& options, ::Reac
                     auto uri = winrt::Windows::Foundation::Uri(winrt::to_hstring(filePathStr));
                     HttpClient httpClient;
 
-                    httpClient.GetBufferAsync(uri).Completed(
-                        [tempFolder, uri, promise = std::move(promise)](
-                            IAsyncOperationWithProgress<winrt::Windows::Storage::Streams::IBuffer, winrt::Windows::Web::Http::HttpProgress> op,
-                            AsyncStatus status) mutable
-                        {
-                            if (status != AsyncStatus::Completed) {
-                                promise.Reject(L"Failed to download file for printing.");
-                                return;
-                            }
-                            auto buffer = op.GetResults();
-                            auto path = uri.Path();
-                            std::wstring fileName = L"printfile";
-                            if (!path.empty()) {
-                                std::wstring wpath = path.c_str();
-                                size_t pos = wpath.find_last_of(L"/\\");
-                                if (pos != std::wstring::npos && pos + 1 < wpath.size()) {
-                                    fileName = wpath.substr(pos + 1);
-                                }
-                                else {
-                                    fileName = wpath;
-                                }
-                            }
-                            tempFolder.CreateFileAsync(fileName, CreationCollisionOption::GenerateUniqueName).Completed(
-                                [buffer, promise = std::move(promise)](IAsyncOperation<StorageFile> fileOp, AsyncStatus fileStatus) mutable {
-                                    if (fileStatus != AsyncStatus::Completed) {
-                                        promise.Reject(L"Failed to create temp file for printing.");
-                                        return;
-                                    }
-                                    StorageFile file = fileOp.GetResults();
-                                    FileIO::WriteBufferAsync(file, buffer).Completed(
-                                        [file, promise = std::move(promise)](IAsyncAction /*writeOp*/, AsyncStatus writeStatus) mutable {
-                                            if (writeStatus != AsyncStatus::Completed) {
-                                                promise.Reject(L"Failed to write to temp file for printing.");
-                                                return;
-                                            }
-                                            winrt::Windows::System::LauncherOptions options;
-                                            options.DisplayApplicationPicker(false);
-                                            options.PreferredApplicationDisplayName(L"Print");
-                                            options.PreferredApplicationPackageFamilyName(L"");
-
-                                            winrt::Windows::System::Launcher::LaunchFileAsync(file, options).Completed(
-                                                [promise = std::move(promise)](IAsyncOperation<bool> op, AsyncStatus status) mutable {
-                                                    if (status == AsyncStatus::Completed && op.GetResults()) {
-                                                        promise.Resolve(::React::JSValue(true));
-                                                    }
-                                                    else {
-                                                        promise.Reject(L"Failed to launch print handler for file.");
-                                                    }
-                                                }
-                                            );
-                                        }
-                                    );
-                                }
-                            );
+                    auto buffer = co_await httpClient.GetBufferAsync(uri);
+                    auto path = uri.Path();
+                    std::wstring fileName = L"printfile";
+                    if (!path.empty()) {
+                        std::wstring wpath = path.c_str();
+                        size_t pos = wpath.find_last_of(L"/\\");
+                        if (pos != std::wstring::npos && pos + 1 < wpath.size()) {
+                            fileName = wpath.substr(pos + 1);
                         }
-                    );
+                        else {
+                            fileName = wpath;
+                        }
+                    }
+                    auto file = co_await tempFolder.CreateFileAsync(fileName, CreationCollisionOption::GenerateUniqueName);
+                    co_await FileIO::WriteBufferAsync(file, buffer);
+
+                    std::wstring nativePath = file.Path().c_str();  // Get full native path
+                    ShellExecuteW(NULL, L"print", nativePath.c_str(), NULL, NULL, SW_SHOWNORMAL);
+                    promise.Resolve(options.jobName);
                 }
                 catch (...) {
-                    promise.Reject(L"Exception occurred while downloading file for printing.");
+                    promise.Reject(L"Exception occurred while downloading or printing file.");
                 }
-                });
+                co_return;
+            });
         } else {
             // Local file path
-            m_context.UIDispatcher().Post([filePathHstring, promise = std::move(promise)]() mutable {
+            m_context.UIDispatcher().Post([options, filePathHstring, promise = std::move(promise)]() mutable -> winrt::fire_and_forget {
                 using namespace winrt::Windows::Storage;
                 using namespace winrt::Windows::Foundation;
 
-                StorageFile::GetFileFromPathAsync(filePathHstring).Completed(
-                    [promise = std::move(promise)](IAsyncOperation<StorageFile> op, AsyncStatus status) mutable {
-                        if (status != AsyncStatus::Completed) {
-                            promise.Reject(L"Failed to open file for printing.");
-                            return;
-                        }
-                        StorageFile file = op.GetResults();
-
-                        winrt::Windows::System::LauncherOptions options;
-                        options.DisplayApplicationPicker(false);
-                        options.PreferredApplicationDisplayName(L"Print");
-                        options.PreferredApplicationPackageFamilyName(L"");
-
-                        winrt::Windows::System::Launcher::LaunchFileAsync(file, options).Completed(
-                            [promise = std::move(promise)](IAsyncOperation<bool> op, AsyncStatus status) mutable {
-                                if (status == AsyncStatus::Completed && op.GetResults()) {
-                                    promise.Resolve(::React::JSValue(true));
-                                } else {
-                                    promise.Reject(L"Failed to launch print handler for file.");
-                                }
-                            }
-                        );
-                    }
-                );
+                try {
+                    StorageFile file = co_await StorageFile::GetFileFromPathAsync(filePathHstring);
+                    std::wstring nativePath = file.Path().c_str();  // Get full native path
+                    ShellExecuteW(NULL, L"print", nativePath.c_str(), NULL, NULL, SW_SHOWNORMAL);
+                    promise.Resolve(options.jobName);
+                }
+                catch (...) {
+                    promise.Reject(L"Failed to open or print local file.");
+                }
+                co_return;
             });
         }
     }
@@ -146,5 +99,6 @@ void RNPrint::Print(RNPrintCodegen::RNPrintSpec_RNPrintOptions&& options, ::Reac
     {
         promise.Reject(L"Unknown error in Print function");
     }
+    co_return;
 }
 } // namespace winrt::RNPrint

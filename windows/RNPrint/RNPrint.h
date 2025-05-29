@@ -35,7 +35,7 @@ struct RNPrint
   void Initialize(React::ReactContext const &reactContext) noexcept;
 
   REACT_METHOD(Print, L"print");
-  void Print(RNPrintCodegen::RNPrintSpec_RNPrintOptions && options, ::React::ReactPromise<::React::JSValue> && promise) noexcept;
+  winrt::fire_and_forget Print(RNPrintCodegen::RNPrintSpec_RNPrintOptions options, ::React::ReactPromise<::React::JSValue> promise) noexcept;
 
 private:
   React::ReactContext m_context;
